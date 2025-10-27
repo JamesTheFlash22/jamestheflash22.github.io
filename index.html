@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CoralMC Match Viewer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      background-color: #1a1a1a;
+      color: #e5e7eb;
+    }
+    .fade-in {
+      animation: fadeIn 0.5s ease-in;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    #matchModal {
+      display: none;
+      position: fixed;
+      z-index: 50;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.4);
+      align-items: center;
+      justify-content: center;
+    }
+    #matchModalContent {
+      background-color: #2d2d2d;
+      margin: 15% auto;
+      padding: 20px;
+      border: 1px solid #888;
+      width: 80%;
+      max-width: 800px;
+      border-radius: 8px;
+      position: relative;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    #closeModal {
+      color: #aaa;
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    #closeModal:hover {
+      color: white;
+    }
+    .tab {
+      overflow: hidden;
+      border-bottom: 1px solid #444;
+    }
+    .tab button {
+      background-color: inherit;
+      float: left;
+      border: none;
+      outline: none;
+      cursor: pointer;
+      padding: 14px 16px;
+      transition: 0.3s;
+      color: #e5e7eb;
+    }
+    .tab button:hover {
+      background-color: #3a3a3a;
+    }
+    .tab button.active {
+      background-color: #2d2d2d;
+      border-bottom: 2px solid #3b82f6;
+    }
+    .tabcontent {
+      display: none;
+      padding: 6px 12px;
+    }
+    @media (max-width: 640px) {
+      #matchModalContent {
+        width: 95%;
+        margin: 5% auto;
+        padding: 10px;
+      }
+      table {
+        font-size: 0.875rem;
+      }
+      .overflow-x-auto {
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+  </style>
+</head>
+<body class="min-h-screen p-6">
+  <div class="max-w-4xl mx-auto">
+    <img src="logo.png" alt="CoralMC Logo" class="mx-auto mb-4 w-64">
+    <h1 class="text-3xl font-bold text-center mb-8 text-blue-500">CoralMC Match e Stats Viewer</h1>
+    <section class="mb-8 bg-gray-800 p-6 rounded-lg shadow-lg">
+      <h2 class="text-xl font-semibold mb-4">Info Giocatore e Stats</h2>
+      <div class="flex gap-2">
+        <input type="text" id="username" placeholder="Inserisci username" class="w-full p-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button onclick="getPlayerData()" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded transition">Carica Dati</button>
+      </div>
+      <div id="playerProfile" class="mt-4 flex items-center gap-4"></div>
+      <div class="tab mt-4">
+        <button class="tablinks" onclick="openTab(event, 'bedwarsTab')" id="defaultOpen">Bedwars Stats</button>
+        <button class="tablinks" onclick="openTab(event, 'kitpvpTab')">KitPvP Stats</button>
+      </div>
+      <div id="bedwarsTab" class="tabcontent grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+        <div id="bedwarsText" class="bg-gray-700 p-4 rounded-lg"></div>
+        <div class="bg-gray-700 p-4 rounded-lg">
+          <canvas id="bedwarsChart"></canvas>
+        </div>
+      </div>
+      <div id="kitpvpTab" class="tabcontent grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+        <div id="kitpvpText" class="bg-gray-700 p-4 rounded-lg"></div>
+        <div class="bg-gray-700 p-4 rounded-lg">
+          <canvas id="kitpvpChart"></canvas>
+        </div>
+      </div>
+    </section>
+    <section class="mb-8 bg-gray-800 p-6 rounded-lg shadow-lg">
+      <h2 class="text-xl font-semibold mb-4">Match Recenti (Bedwars)</h2>
+      <button onclick="getRecentMatches()" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded transition mb-4">Carica Match (usa username sopra)</button>
+      <div class="flex gap-2 mb-4">
+        <input type="text" id="matchIdInput" placeholder="Inserisci ID match" class="w-full p-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button onclick="viewMatchById()" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded transition">Visualizza Match</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table id="matchesTable" class="w-full text-left">
+          <thead class="bg-gray-700">
+            <tr>
+              <th class="p-3">ID</th>
+              <th class="p-3">Arena</th>
+              <th class="p-3">Tipo</th>
+              <th class="p-3">Risultato</th>
+              <th class="p-3">Durata</th>
+              <th class="p-3">Data</th>
+              <th class="p-3">Dettagli</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+    <div id="error" class="text-red-500 text-center"></div>
+  </div>
+  <div id="matchModal">
+    <div id="matchModalContent">
+      <span id="closeModal" onclick="closeModal()">&times;</span>
+      <div id="modalMatchDetails" class="mb-4"></div>
+      <div class="overflow-x-auto">
+        <table id="modalPlayerStatsTable" class="w-full text-left">
+          <thead class="bg-gray-700">
+            <tr>
+              <th class="p-3">Giocatore</th>
+              <th class="p-3">Squadra</th>
+              <th class="p-3">Kills</th>
+              <th class="p-3">Final Kills</th>
+              <th class="p-3">Deaths</th>
+              <th class="p-3">Letti Rotti</th>
+              <th class="p-3">Score</th>
+              <th class="p-3">K/D</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="modalError" class="text-red-500 mt-4"></div>
+    </div>
+  </div>
+  <script>
+    const API_BASE = 'http://lea-script.tech:40015';
+    let bedwarsChart, kitpvpChart;
+    function getTeamColor(team) {
+      const colors = {
+        'RED': '#ff0000',
+        'BLUE': '#0000ff',
+        'GREEN': '#00ff00',
+        'YELLOW': '#ffff00',
+        'AQUA': '#00ffff',
+        'WHITE': '#ffffff',
+        'PINK': '#ff00ff',
+        'GRAY': '#808080'
+      };
+      return colors[team.toUpperCase()] || '#ffffff';
+    }
+    async function fetchData(endpoint) {
+      try {
+        const res = await fetch(`${API_BASE}${endpoint}`);
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Errore sconosciuto');
+        }
+        return data;
+      } catch (err) {
+        document.getElementById('error').innerText = `Errore: ${err.message}`;
+        return null;
+      }
+    }
+    async function getPlayerData() {
+      const username = document.getElementById('username').value;
+      if (!username) {
+        document.getElementById('error').innerText = 'Inserisci un username';
+        return;
+      }
+      const [info, bedwars, kitpvp] = await Promise.all([
+        fetchData(`/player/info/${username}`),
+        fetchData(`/bedwars/stats/${username}`),
+        fetchData(`/kitpvp/stats/${username}`)
+      ]);
+      if (info) {
+        document.getElementById('playerProfile').innerHTML = `
+          <img src="https://skin.ggtn.ch/headiso/${username}" alt="Head di ${username}" class="w-20 h-20">
+          <div>
+            <h3 class="text-lg font-semibold text-blue-500">${info.username}</h3>
+            <p class="text-gray-300">Online: ${info.isOnline ? 'Sì' : 'No'}<br>VIP: ${info.isVip ? 'Sì' : 'No'}<br>Ultimo accesso: ${new Date(info.lastSeen).toLocaleString('it-IT')}</p>
+          </div>
+        `;
+        document.getElementById('playerProfile').classList.add('fade-in');
+      }
+      if (bedwars) {
+        const kd = bedwars.deaths === 0 ? bedwars.kills : (bedwars.kills / bedwars.deaths).toFixed(2);
+        document.getElementById('bedwarsText').innerHTML = `
+          <h3 class="text-lg font-semibold text-blue-500 mb-2">Bedwars Stats</h3>
+          <p class="text-gray-300">Livello: ${bedwars.level}<br>Vittorie: ${bedwars.wins}<br>Serie di vittorie: ${bedwars.winstreak}<br>Perdite: ${bedwars.losses}<br>K/D: ${kd}<br>Letti rotti: ${bedwars.beds_broken}<br>Monete: ${bedwars.coins}<br>Clan: ${bedwars.clan_name || 'Nessuno'}</p>
+        `;
+        document.getElementById('bedwarsText').classList.add('fade-in');
+        if (bedwarsChart) bedwarsChart.destroy();
+        const ctxBed = document.getElementById('bedwarsChart').getContext('2d');
+        bedwarsChart = new Chart(ctxBed, {
+          type: 'bar',
+          data: {
+            labels: ['Vittorie', 'Perdite', 'Uccisioni', 'Morti', 'Letti Rotti'],
+            datasets: [{
+              label: 'Bedwars Stats',
+              data: [bedwars.wins, bedwars.losses, bedwars.kills, bedwars.deaths, bedwars.beds_broken],
+              backgroundColor: ['#22d55e', '#ff4444', '#3b82f6', '#ff7316', '#ffb308']
+            }]
+          },
+          options: { scales: { y: { beginAtZero: true } } }
+        });
+      }
+      if (kitpvp) {
+        const kd = kitpvp.overall_deaths === 0 ? kitpvp.overall_kills : (kitpvp.overall_kills / kitpvp.overall_deaths).toFixed(2);
+        document.getElementById('kitpvpText').innerHTML = `
+          <h3 class="text-lg font-semibold text-blue-500 mb-2">KitPvP Stats</h3>
+          <p class="text-gray-300">Saldo: ${kitpvp.balance}<br>Uccisioni: ${kitpvp.overall_kills}<br>Morti: ${kitpvp.overall_deaths}<br>K/D: ${kd}<br>Serie uccisioni attuale: ${kitpvp.overall_killstreak}<br>Serie uccisioni massima: ${kitpvp.overall_max_killstreak}<br>Taglia attuale: ${kitpvp.bounty}<br>Taglia massima: ${kitpvp.max_bounty}<br>Gang: ${kitpvp.gang_name || 'Nessuna'}<br>Rango Gang: ${kitpvp.gang_rank_name || 'Nessuno'}</p>
+        `;
+        document.getElementById('kitpvpText').classList.add('fade-in');
+        if (kitpvpChart) kitpvpChart.destroy();
+        const ctxKit = document.getElementById('kitpvpChart').getContext('2d');
+        kitpvpChart = new Chart(ctxKit, {
+          type: 'doughnut',
+          data: {
+            labels: ['Uccisioni', 'Morti', 'Serie Max', 'Taglia Max'],
+            datasets: [{
+              label: 'KitPvP Stats',
+              data: [kitpvp.overall_kills, kitpvp.overall_deaths, kitpvp.overall_max_killstreak, kitpvp.max_bounty],
+              backgroundColor: ['#3b82f6', '#ff4444', '#22d55e', '#ffb308']
+            }]
+          }
+        });
+      }
+      document.getElementById('defaultOpen').click();
+    }
+    function openTab(evt, tabName) {
+      const tabcontent = document.getElementsByClassName('tabcontent');
+      for (let i = 0; i < tabcontent.length; i++) {
+        tabcontent[i].style.display = 'none';
+      }
+      const tablinks = document.getElementsByClassName('tablinks');
+      for (let i = 0; i < tablinks.length; i++) {
+        tablinks[i].className = tablinks[i].className.replace(' active', '');
+      }
+      document.getElementById(tabName).style.display = 'grid';
+      evt.currentTarget.className += ' active';
+    }
+    async function getRecentMatches() {
+      const username = document.getElementById('username').value;
+      if (!username) {
+        document.getElementById('error').innerText = 'Inserisci un username';
+        return;
+      }
+      const matches = await fetchData(`/bedwars/matches/${username}`);
+      if (matches) {
+        const tbody = document.getElementById('matchesTable').querySelector('tbody');
+        tbody.innerHTML = '';
+        matches.forEach(m => {
+          const tr = document.createElement('tr');
+          tr.classList.add('fade-in', 'hover:bg-gray-600');
+          tr.innerHTML = `
+            <td class="p-3">${m.match_id}</td>
+            <td class="p-3">${m.arena_name}</td>
+            <td class="p-3">${m.match_type_name}</td>
+            <td class="p-3">${m.match_outcome}</td>
+            <td class="p-3">${Math.floor(m.match_duration_seconds / 60)}m ${m.match_duration_seconds % 60}s</td>
+            <td class="p-3">${new Date(m.match_start).toLocaleString('it-IT')}</td>
+            <td class="p-3"><button onclick="getMatchDetailsInModal(${m.match_id})" class="px-2 py-1 bg-blue-700 hover:bg-blue-800 rounded transition">Vedi Dettagli</button></td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+    }
+    function viewMatchById() {
+      const matchId = parseInt(document.getElementById('matchIdInput').value);
+      if (!matchId || isNaN(matchId)) {
+        document.getElementById('error').innerText = 'Inserisci un ID match valido';
+        return;
+      }
+      getMatchDetailsInModal(matchId);
+    }
+    async function getMatchDetailsInModal(matchId) {
+      document.getElementById('modalError').innerHTML = '';
+      const detail = await fetchData(`/bedwars/match/${matchId}`);
+      if (detail) {
+        const min = Math.floor(detail.duration_seconds / 60);
+        const sec = detail.duration_seconds % 60;
+        const startDate = new Date(detail.start_time).toLocaleString('it-IT', { dateStyle: 'full', timeStyle: 'short' });
+        const endDate = detail.end_time ? new Date(detail.end_time).toLocaleString('it-IT', { dateStyle: 'full', timeStyle: 'short' }) : 'N/A';
+        document.getElementById('modalMatchDetails').innerHTML = `
+          <h3 class="text-lg font-semibold text-blue-500 mb-2">Dettagli Match ${detail.match_id}</h3>
+          <ul class="text-gray-300 list-disc pl-5">
+            <li><strong>Arena:</strong> ${detail.arena_name}</li>
+            <li><strong>Tipo:</strong> ${detail.type_name}</li>
+            <li><strong>Durata:</strong> ${min} minuti e ${sec} secondi</li>
+            <li><strong>Vincitore:</strong> <span style="color: ${getTeamColor(detail.winning_team_name)};">${detail.winning_team_name}</span></li>
+            <li><strong>Inizio:</strong> ${startDate}</li>
+            <li><strong>Fine:</strong> ${endDate}</li>
+          </ul>
+        `;
+        document.getElementById('modalMatchDetails').classList.add('fade-in');
+        const tbody = document.getElementById('modalPlayerStatsTable').querySelector('tbody');
+        tbody.innerHTML = '';
+        detail.per_player_stats.forEach(p => {
+          const tr = document.createElement('tr');
+          tr.classList.add('fade-in', 'hover:bg-gray-600');
+          tr.innerHTML = `
+            <td class="p-3">${p.username}</td>
+            <td class="p-3" style="color: ${getTeamColor(p.team_name)};">${p.team_name}</td>
+            <td class="p-3">${p.kills}</td>
+            <td class="p-3">${p.final_kills}</td>
+            <td class="p-3">${p.deaths}</td>
+            <td class="p-3">${p.beds_broken}</td>
+            <td class="p-3">${p.score}</td>
+            <td class="p-3">${p.kd}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+        document.getElementById('matchModal').style.display = 'flex';
+      } else {
+        document.getElementById('modalMatchDetails').innerHTML = '';
+        document.getElementById('modalPlayerStatsTable').querySelector('tbody').innerHTML = '';
+        document.getElementById('modalError').innerHTML = 'Match non trovato. Verifica l\'ID del match e riprova. Potrebbe essere un ID non valido o un errore temporaneo del server.';
+        document.getElementById('matchModal').style.display = 'flex';
+      }
+    }
+    function closeModal() {
+      document.getElementById('matchModal').style.display = 'none';
+    }
+    window.onclick = function(event) {
+      if (event.target == document.getElementById('matchModal')) {
+        closeModal();
+      }
+    }
+  </script>
+</body>
+</html>
